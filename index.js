@@ -1,84 +1,105 @@
-const express = require('express')
-const app = express()
+const express = require("express");
+const morgan = require("morgan");
+const cors = require("cors");
+const app = express();
 
-let notes = [
+app.use(cors());
+
+// Middleware to parse JSON bodies
+app.use(express.json());
+
+// Custom token to log request body
+morgan.token("body", (req) => JSON.stringify(req.body));
+
+// Custom format to include method, URL, status, response time, and request body
+const customMorganFormat =
+  ":method :url :status :res[content-length] - :response-time ms :body";
+
+// Use morgan middleware with custom format
+app.use(morgan(customMorganFormat));
+
+let persons = [
   {
     id: 1,
-    content: "HTML is easy",
-    date: "2022-01-10T17:30:31.098Z",
-    important: true
+    name: "Arto Hellas",
+    number: "123",
   },
   {
     id: 2,
-    content: "Browser can execute only Javascript",
-    date: "2022-01-10T18:39:34.091Z",
-    important: false
+    name: "Ada Lovelace",
+    number: "123",
   },
   {
     id: 3,
-    content: "GET and POST are the most important methods of HTTP protocol",
-    date: "2022-01-10T19:20:14.298Z",
-    important: true
-  }
-]
+    name: "Dan Abramov",
+    number: "12-43-234345",
+  },
+];
 
-app.use(express.json())
-
-app.get('/', (req, res) => {
-  res.send('<h1>Hello World!</h1>')
-})
+app.get("/info", (request, response) => {
+  const personCount = persons.length;
+  const requestTime = new Date();
+  response.send(`<p>Phonebook has info for ${personCount} people</p>
+    <p>Request made at: ${requestTime}</p>`);
+});
 
 const generateId = () => {
-  const maxId = notes.length > 0
-    ? Math.max(...notes.map(n => n.id))
-    : 0
-  return maxId + 1
-}
+  return Math.floor(Math.random() * 1000000);
+};
 
-app.post('/api/notes', (request, response) => {
-  const body = request.body
+app.post("/api/persons", (request, response) => {
+  const body = request.body;
+  const newPersonName = body.name;
+  const duplicatePerson = persons.find(
+    (person) => person.name === newPersonName
+  );
 
-  if (!body.content) {
-    return response.status(400).json({ 
-      error: 'content missing' 
-    })
+  if (!body.name || !body.number) {
+    return response.status(400).json({
+      error: "content missing",
+    });
   }
 
-  const note = {
-    content: body.content,
-    important: body.important || false,
-    date: new Date(),
+  if (duplicatePerson) {
+    return response.status(409).json({
+      error: "name must be unique",
+    });
+  }
+
+  const person = {
     id: generateId(),
-  }
+    name: body.name,
+    number: body.number,
+  };
 
-  notes = notes.concat(note)
+  persons = persons.concat(person);
 
-  response.json(note)
-})
+  response.json(person);
+});
 
-app.get('/api/notes', (req, res) => {
-  res.json(notes)
-})
+app.get("/api/persons", (request, response) => {
+  response.json(persons);
+});
 
-app.delete('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  notes = notes.filter(note => note.id !== id)
+app.delete("/api/persons/:id", (request, response) => {
+  const id = Number(request.params.id);
+  persons = persons.filter((person) => person.id !== id);
 
-  response.status(204).end()
-})
+  response.status(204).end();
+});
 
-app.get('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const note = notes.find(note => note.id === id)
+app.get("/api/persons/:id", (request, response) => {
+  const id = Number(request.params.id);
+  const person = persons.find((person) => person.id === id);
 
-  if (note) {
-    response.json(note)
+  if (person) {
+    response.json(person);
   } else {
-    response.status(404).end()
+    response.status(404).end();
   }
-})
+});
 
-const PORT = 3001
+const PORT = 3001;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+  console.log(`Server running on port ${PORT}`);
+});
