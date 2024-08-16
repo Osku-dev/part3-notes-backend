@@ -3,6 +3,7 @@ const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
 const app = express();
+const path = require('path');
 
 app.use(cors());
 
@@ -100,7 +101,15 @@ app.get("/api/persons/:id", (request, response) => {
   }
 });
 
-const PORT = process.env.PORT || 3001
+// Serve static files from the 'dist' directory
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Fallback route for single-page applications (optional)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+const PORT = 3001
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
