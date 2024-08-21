@@ -4,6 +4,7 @@ const morgan = require("morgan");
 const cors = require("cors");
 const app = express();
 const path = require('path');
+const Person = require('./models/person');
 
 app.use(cors());
 
@@ -20,94 +21,114 @@ const customMorganFormat =
 // Use morgan middleware with custom format
 app.use(morgan(customMorganFormat));
 
-let persons = [
-  {
-    id: 1,
-    name: "Arto Hellas",
-    number: "123",
-  },
-  {
-    id: 2,
-    name: "Ada Lovelace",
-    number: "123",
-  },
-  {
-    id: 3,
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-];
+// Middleware for serving static files from the 'dist' directory
+app.use(express.static(path.join(__dirname, 'dist')));
 
-app.get("/info", (request, response) => {
-  const personCount = persons.length;
-  const requestTime = new Date();
-  response.send(`<p>Phonebook has info for ${personCount} people</p>
-    <p>Request made at: ${requestTime}</p>`);
+// Routes
+app.get("/info", (request, response, next) => {
+  Person.countDocuments({})
+    .then(count => {
+      const requestTime = new Date();
+      response.send(`<p>Phonebook has info for ${count} people</p>
+        <p>Request made at: ${requestTime}</p>`);
+    })
+    .catch(error => next(error));
 });
 
-const generateId = () => {
-  return Math.floor(Math.random() * 1000000);
-};
-
-app.post("/api/persons", (request, response) => {
+app.post('/api/persons', (request, response, next) => {
   const body = request.body;
-  const newPersonName = body.name;
-  const duplicatePerson = persons.find(
-    (person) => person.name === newPersonName
-  );
 
   if (!body.name || !body.number) {
-    return response.status(400).json({
-      error: "content missing",
-    });
+    return response.status(400).json({ error: 'Name and number are required' });
   }
 
-  if (duplicatePerson) {
-    return response.status(409).json({
-      error: "name must be unique",
-    });
-  }
-
-  const person = {
-    id: generateId(),
+  const person = new Person({
     name: body.name,
-    number: body.number,
-  };
+    number: body.number
+  });
 
-  persons = persons.concat(person);
-
-  response.json(person);
+  person.save()
+    .then(savedPerson => {
+      console.log('Person saved:', savedPerson);
+      response.status(201).json(savedPerson); // 201 Created status code
+    })
+    .catch(error => next(error));
 });
 
-app.get("/api/persons", (request, response) => {
-  response.json(persons);
+app.get('/api/persons', (request, response, next) => {
+  Person.find({})
+    .then(persons => {
+      console.log('Successfully fetched persons');
+      response.json(persons);
+    })
+    .catch(error => next(error));
 });
 
-app.delete("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  persons = persons.filter((person) => person.id !== id);
-
-  response.status(204).end();
+app.get('/api/persons/:id', (request, response, next) => {
+  Person.findById(request.params.id)
+    .then(person => {
+      if (person) {
+        response.json(person);
+      } else {
+        response.status(404).end();
+      }
+    })
+    .catch(error => next(error));
 });
 
-app.get("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  const person = persons.find((person) => person.id === id);
+app.put('/api/persons/:id', (request, response, next) => {
+  const { number } = request.body;
 
-  if (person) {
-    response.json(person);
-  } else {
-    response.status(404).end();
-  }
+  // Create an object with the fields to update
+  const updatedPerson = { number };
+
+  // Find the person by ID and update their number
+  Person.findByIdAndUpdate(
+    request.params.id,
+    updatedPerson,
+    { new: true, runValidators: true, context: 'query' } // options: return the updated document and apply schema validations
+  )
+    .then(updatedPerson => {
+      if (updatedPerson) {
+        response.json(updatedPerson);
+      } else {
+        response.status(404).json({ error: 'Person not found' });
+      }
+    })
+    .catch(error => next(error));
 });
 
-// Serve static files from the 'dist' directory
-app.use(express.static(path.join(__dirname, 'dist')));
+app.delete('/api/persons/:id', (request, response, next) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then(result => {
+      if (result) {
+        response.status(204).end();
+      } else {
+        response.status(404).end();
+      }
+    })
+    .catch(error => next(error));
+});
 
 // Fallback route for single-page applications (optional)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
+
+// Error handling middleware
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message);
+
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' });
+  } else if (error.name === 'ValidationError') {
+    return response.status(400).json({ error: error.message })
+  }
+
+  next(error);
+};
+
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
